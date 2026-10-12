@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MQTT 雲端智能控制台 | JLab 互動介面</title>
+  <meta name="description" content="自動連接 broker.emqx.io 並發布控制指令至 jjlab/a 的淡藍色現代化 MQTT 網頁控制台">
+  
+  <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons for clean UI feedback -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- MQTT.js Library via CDN -->
+  <script src="https://unpkg.com/mqtt@5.5.0/dist/mqtt.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 背景裝飾微光效果 -->
+  <div class="ambient-glow glow-top"></div>
+  <div class="ambient-glow glow-bottom"></div>
+
+  <div class="app-container">
+    <!-- 頂部標題與狀態欄 -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="logo-badge">
+          <i class="fa-solid fa-satellite-dish"></i>
+        </div>
+        <div>
+          <h1 class="app-title">JLab MQTT 控制中心</h1>
+          <p class="app-subtitle">即時物聯網通訊與狀態監控</p>
+        </div>
+      </div>
+
+      <!-- 連線狀態徽章 (可點擊切換手動/自動) -->
+      <div class="status-indicator-wrapper">
+        <div id="connectionStatusBadge" class="status-badge connecting">
+          <span class="status-ping"></span>
+          <span class="status-dot"></span>
+          <span id="connectionStatusText" class="status-text">連線建立中...</span>
+        </div>
+        <button id="reconnectBtn" class="btn-icon" title="手動重新連線" id="btn-reconnect">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- 主操作面板 -->
+    <main class="main-content">
+      <!-- 核心控制卡片 (淡藍色主要控制項) -->
+      <section class="control-card glass-panel">
+        <div class="card-header">
+          <div class="card-tag"><i class="fa-solid fa-bolt"></i> 核心指令發布</div>
+          <span class="topic-indicator">主題：<code>jjlab/a</code></span>
+        </div>
+
+        <div class="button-stage">
+          <!-- 核心互動按鈕 (精緻淡藍色設計) -->
+          <button id="sendActionBtn" class="soft-blue-action-btn" aria-label="傳送 b1_on 指令">
+            <div class="btn-glow-layer"></div>
+            <div class="btn-ripple-container" id="rippleContainer"></div>
+            
+            <div class="btn-content">
+              <div class="btn-icon-wrapper">
+                <i class="fa-solid fa-power-off btn-power-icon"></i>
+              </div>
+              <div class="btn-text-group">
+                <span class="btn-title">傳送 b1_on 指令</span>
+                <span class="btn-desc">點擊發布載荷至 <code>jjlab/a</code></span>
+              </div>
+            </div>
+
+            <div class="btn-sparkle"></div>
+          </button>
+        </div>
+
+        <!-- 按鈕操作即時回饋提示 -->
+        <div id="publishFeedback" class="publish-feedback">
+          <i class="fa-solid fa-circle-check"></i>
+          <span id="feedbackText">就緒，等待指令點擊</span>
+        </div>
+      </section>
+
+      <!-- 系統監控與即時遙測網格 -->
+      <div class="dashboard-grid">
+        <!-- 伺服器狀態與設定簡報 -->
+        <section class="info-card glass-panel">
+          <div class="card-header">
+            <div class="card-tag"><i class="fa-solid fa-server"></i> 連線節點資訊</div>
+            <button id="toggleSettingsBtn" class="link-btn" title="切換連線設定">
+              <i class="fa-solid fa-sliders"></i> 設定
+            </button>
+          </div>
+
+          <div class="param-list">
+            <div class="param-row">
+              <span class="param-label"><i class="fa-solid fa-globe"></i> 伺服器 (Broker)</span>
+              <span class="param-value" id="displayBroker">broker.emqx.io</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label"><i class="fa-solid fa-network-wired"></i> 協定與通訊埠</span>
+              <span class="param-value" id="displayPort">WSS (8084) / 1883</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label"><i class="fa-solid fa-hashtag"></i> 訂閱主題 (Sub)</span>
+              <span class="param-value code-pill" id="displaySubTopic">jjlab/a</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label"><i class="fa-solid fa-paper-plane"></i> 發送載荷 (Payload)</span>
+              <span class="param-value code-pill" id="displayPayload">b1_on</span>
+            </div>
+            <div class="param-row">
+              <span class="param-label"><i class="fa-regular fa-clock"></i> 連線時間 / 延遲</span>
+              <span class="param-value" id="latencyIndicator">測量中...</span>
+            </div>
+          </div>
+
+          <!-- 可展開的參數自訂面板 (折疊式) -->
+          <div id="settingsDrawer" class="settings-drawer hidden">
+            <div class="drawer-divider"></div>
+            <div class="input-group">
+              <label for="inputHost">Broker 主機：</label>
+              <input type="text" id="inputHost" value="broker.emqx.io">
+            </div>
+            <div class="input-grid-2">
+              <div class="input-group">
+                <label for="inputPort">WebSocket 埠：</label>
+                <input type="number" id="inputPort" value="8084">
+              </div>
+              <div class="input-group">
+                <label for="inputProtocol">傳輸協議：</label>
+                <select id="inputProtocol">
+                  <option value="wss" selected>WSS (加密 8084)</option>
+                  <option value="ws">WS (明文 8083)</option>
+                </select>
+              </div>
+            </div>
+            <div class="input-group">
+              <label for="inputTopic">主題 (Topic)：</label>
+              <input type="text" id="inputTopic" value="jjlab/a">
+            </div>
+            <button id="applySettingsBtn" class="btn-subtle">
+              <i class="fa-solid fa-check"></i> 套用並重新連接
+            </button>
+          </div>
+        </section>
+
+        <!-- 即時訊息與事件串流日誌 -->
+        <section class="logs-card glass-panel">
+          <div class="card-header">
+            <div class="card-tag"><i class="fa-solid fa-terminal"></i> 即時事件串流 (jjlab/a)</div>
+            <button id="clearLogsBtn" class="link-btn" title="清除日誌">
+              <i class="fa-solid fa-trash-can"></i> 清除
+            </button>
+          </div>
+
+          <div class="logs-container" id="logsContainer">
+            <div class="log-entry system">
+              <span class="log-time">系統</span>
+              <span class="log-msg">正在啟動 MQTT 連線引擎並連往 broker.emqx.io ...</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- 頁尾聲明 -->
+    <footer class="app-footer">
+      <span>JLab IoT Automation Console</span>
+      <span class="dot-separator">•</span>
+      <span>基於 EMQX 公共 Broker 與 WebSockets 協議</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
